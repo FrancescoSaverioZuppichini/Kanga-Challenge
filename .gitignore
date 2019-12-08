@@ -1,13 +1,13 @@
 .idea
 .vscode
-./sorce/dataset/
+.pb
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 # C extensions
 *.so
-
+source/dataset
 # Distribution / packaging
 .Python
 build/

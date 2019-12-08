@@ -36,17 +36,16 @@ class VideoDataset(Dataset):
         return csl.from_file(file_path, out_dir)
 
     @classmethod
-    def from_file(csl, video_path: Path, out_dir: Path):
+    def from_file(cls, video_path: Path, out_dir: Path):
         out_dir = out_dir / 'frames'
         if not out_dir.exists(): out_dir.mkdir()
         cap = cv2.VideoCapture(str(video_path))
-        fig = plt.figure()
         i = 0
         bar = tqdm.tqdm()
         frames = []
         while (cap.isOpened()):
             ret, frame = cap.read()
-            cv2.imwrite(f"{out_dir}/frame-{i}.jpg", frame)
+            cv2.imwrite(f"{out_dir}/{i}.jpg", frame)
             i += 1
             bar.update()
             frames.append(frame)
