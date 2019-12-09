@@ -25,10 +25,26 @@ class VideoDataset(Dataset):
         return x
 
     def __len__(self):
-        pass
+        return len(self.frames)
 
     @classmethod
     def from_yt(csl, video_url: str, out_dir: Path, force: bool = False):
+        """
+        Uses `pytube` to download a video from youtube using `video_url` and stores in `out_dir`. 
+        The output filepath is computed using the video title.
+        
+        :param csl: [description]
+        :type csl: [VideoDataset]
+        :param video_url: video url
+        :type video_url: str
+        :param out_dir: directory in which the video will be stored
+        :type out_dir: Path
+        :param force: If True, it will override the existing video, if any, defaults to False.
+        :type force: bool, optional
+        :return: A new instance of VideoDataset
+        :rtype: [VideoDataset]
+        """
+        
         youtube = pytube.YouTube(video_url)
         video = youtube.streams.first()
         file_path = out_dir / (video.title + '.mp4')
@@ -43,6 +59,15 @@ class VideoDataset(Dataset):
 
     @classmethod
     def from_file(cls, video_path: Path, out_dir: Path):
+        """Open a video file and store each frame individually.
+        
+        :param video_path: [description]
+        :type video_path: Path
+        :param out_dir: [description]
+        :type out_dir: Path
+        :return: [description]
+        :rtype: [type]
+        """
         out_dir = out_dir / 'frames'
         if not out_dir.exists(): out_dir.mkdir()
         cap = cv2.VideoCapture(str(video_path))
