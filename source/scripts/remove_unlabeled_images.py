@@ -1,7 +1,7 @@
 from pathlib import Path
-from argparse import Argument
+from argparse import ArgumentParser
 
-parser = argparse.ArgumentParser()
+parser = ArgumentParser()
 parser.add_argument('--root',
                     type=str,
                     default='train',
