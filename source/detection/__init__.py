@@ -25,7 +25,10 @@ from logger import logging
 import matplotlib.patches as patches
 
 
-class TextDetector(Detector):
+class EASTTextDetector(Detector):
+    """
+    Uses EAST algorithm based on opencv to find text in a picture.
+    """
     def __init__(self):
         super().__init__()
         self.net = cv2.dnn.readNet(

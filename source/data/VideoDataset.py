@@ -10,10 +10,15 @@ plt.ion()  # enables interactive mode
 
 
 class VideoDataset(Dataset):
+    """
+    This class represents a Video dataset. A video is composed by frames, a series of images. Basically, 
+    this is just a long list of tensors in which we can apply a transformation. It also provide 
+    two useful methods to decompose video form youtube and from a video file.
+    """
     def __init__(self, frames: list, transform=None):
         self.frames = frames
         self.transform = transform
-        
+
     def __getitem__(self, idx):
         x = self.frames[idx]
         if self.transform is not None: x = self.transform(x)
@@ -23,12 +28,13 @@ class VideoDataset(Dataset):
         pass
 
     @classmethod
-    def from_yt(csl, video_url: str, out_dir: Path):
+    def from_yt(csl, video_url: str, out_dir: Path, force: bool = False):
         youtube = pytube.YouTube(video_url)
         video = youtube.streams.first()
         file_path = out_dir / (video.title + '.mp4')
-        if file_path.exists():
-            logging.info(f'File already exist at {file_path}, skipping downloading.')
+        if file_path.exists() and not force:
+            logging.info(
+                f'File already exist at {file_path}, skipping downloading.')
         else:
             logging.info(f'Downloading video from {video_url}.')
             video.download(out_dir)
