@@ -59,7 +59,8 @@ class VideoDataset(Dataset):
 
     @classmethod
     def from_file(cls, video_path: Path, out_dir: Path):
-        """Open a video file and store each frame individually.
+        """
+        Open a video file and store each frame individually.
         
         :param video_path: [description]
         :type video_path: Path

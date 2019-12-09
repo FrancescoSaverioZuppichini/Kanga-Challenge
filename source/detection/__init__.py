@@ -1,10 +1,12 @@
 import cv2
 import numpy as np
 import time as time
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from logger import logging 
+from logger import logging
 from abc import ABC, abstractmethod
+import matplotlib.patches as patches
+
 
 class Detector:
     def __call__(self, frames: list = [], *args, **kwargs) -> dict:
@@ -18,11 +20,6 @@ class Detector:
     @abstractmethod
     def to_JSON() -> dict:
         pass
-
-
-from detection import Detector
-from logger import logging
-import matplotlib.patches as patches
 
 
 class EASTTextDetector(Detector):
@@ -62,7 +59,12 @@ class EASTTextDetector(Detector):
                               self.indices, h, w)
         return self
 
-    def get_boxes(self, geometry, scores, original_shape, factor=4):
+    def get_boxes(self,
+                  geometry,
+                  scores,
+                  original_shape,
+                  factor=4,
+                  threshold=0.8):
         grid, _ = np.meshgrid(np.arange(original_shape[0] // 4),
                               np.arange(original_shape[0] // 4))
 
@@ -77,7 +79,7 @@ class EASTTextDetector(Detector):
         x1 = x2 - w
         y1 = y2 - h
 
-        indices = np.where(scores.reshape(-1) > 0.8)[0]
+        indices = np.where(scores.reshape(-1) > threshold)[0]
 
         boxes = np.stack([x1, y1, x2, y2])
         boxes = boxes.reshape((4, -1))
