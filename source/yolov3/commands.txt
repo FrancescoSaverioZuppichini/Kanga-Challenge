@@ -1,2 +1,0 @@
-python3 detect.py --cfg cfg/yolov3-tiny-frames.cfg --data ../dataset/yolo/frames.data  --weights weights/best.pt                
-python3 train.py --data ../dataset/yolo/frames.data --cfg cfg/yolov3-tiny-frames.cfg --weights ../checkpoint/yolo/yolov3-tiny.weights
