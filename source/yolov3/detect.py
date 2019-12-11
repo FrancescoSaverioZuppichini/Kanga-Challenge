@@ -1,77 +1,83 @@
 import argparse
+import torch
 from sys import platform
 
-from models import *  # set ONNX_EXPORT in models.py
-from utils.datasets import *
-from utils.utils import *
+from .models import *  # set ONNX_EXPORT in models.py
+from .utils.datasets import *
+from .utils.utils import *
 
 import matplotlib.pyplot as plt
+
+
 class Detect:
-    def __init__(self, device, opt, classes: dict = None):
+    def __init__(self, device, cfg, weights, img_size=416, output=None, half=False, view_img=False,
+                 classes: dict = None):
         self.device = device
+        self.cfg = cfg
+        self.weights = weights
+        self.img_size = (320, 192) if ONNX_EXPORT else img_size
+        self.half = False
+        self.view_img = view_img
         self.classes = classes
-        self.half =  False
         self.colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(classes))]
 
-        img_size = (
-            320, 192) if ONNX_EXPORT else opt.img_size  # (320, 192) or (416, 256) or (608, 352) for (height, width)
-        out, source, weights, half, view_img = opt.output, opt.source, opt.weights, opt.half, opt.view_img
-        webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
+        self.model = self.get_model()
 
-        # Initialize model
-        model = Darknet(opt.cfg, img_size)
-        # Load weights
-        attempt_download(weights)
-        if weights.endswith('.pt'):  # pytorch format
-            model.load_state_dict(torch.load(weights, map_location=device)['model'])
+    def get_model(self):
+        model = Darknet(self.cfg, self.img_size)
+        attempt_download(self.weights)
+        if self.weights.endswith('.pt'):  # pytorch format
+            model.load_state_dict(torch.load(self.weights, map_location=self.device)['model'])
         else:  # darknet format
-            _ = load_darknet_weights(model, weights)
+            _ = load_darknet_weights(model, self.weights)
 
-        model.to(device).eval()
+        model.to(self.device).eval()
 
         # Half precision
-        half = half and device.type != 'cpu'  # half precision only supported on CUDA
-        if half:
+        self.half = self.half and self.device.type != 'cpu'  # half precision only supported on CUDA
+        if self.half:
             model.half()
-        self.model = model
 
-    def __call__(self, img):
-        img0 = img
-        original_shape = img.shape
+        return model
+
+    def __call__(self, img, conf_thres=0.3, nms_thres=0.5):
         t = time.time()
-        # Get detections
         # Padded resize
-        img = letterbox(img0)[0]
+        img_pad = letterbox(img)[0]
         # Normalize RGB
-        img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
-        img = np.ascontiguousarray(img, dtype=np.float16 if self.half else np.float32)  # uint8 to fp16/fp32
-        img /= 255.0  # 0 - 255 to 0.0 - 1.0
+        img_pad = cv2.cvtColor(img_pad, cv2.COLOR_BGR2RGB)
+        img_pad = img_pad.transpose(2, 0, 1)
+        img_pad = np.ascontiguousarray(img_pad, dtype=np.float16 if self.half else np.float32)  # uint8 to fp16/fp32
+        img_pad /= 255.0  # 0 - 255 to 0.0 - 1.0
 
-        img = torch.from_numpy(img).to(self.device)
-        if img.ndimension() == 3:
-            img = img.unsqueeze(0)
-        pred = self.model(img)[0]
-        if opt.half:
+        x = torch.from_numpy(img_pad).to(self.device)
+        if x.ndimension() == 3:
+            x = x.unsqueeze(0)
+        pred = self.model(x)[0]
+        if self.half:
             pred = pred.float()
-        pred = non_max_suppression(pred, opt.conf_thres, opt.nms_thres)
-        # Apply NMS
-        # *xyxy, conf, _, cls = det
+        pred = non_max_suppression(pred, conf_thres, nms_thres)
+        # print(f'Pred done in {time.time() - t:.3f}s')
         for i, det in enumerate(pred):  # detections per image
             if det is not None and len(det):
-                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], original_shape).round()
+                det[:, :4] = scale_coords(x.shape[2:], det[:, :4], img.shape).round()
                 for *xyxy, conf, _, cls in det:
                     # Rescale boxes from img_size to im0 size
-                    print(self.classes[int(cls)])
-                    label = '%s %.2f' % (self.classes[int(cls)], conf)
-                    plot_one_box(xyxy, img0, label=label, color=self.colors[int(cls)])
+                    # print(f'class={self.classes[int(cls)]:<10} coords={xyxy}')
+                    if self.view_img:
+                        label = '%s %.2f' % (self.classes[int(cls)], conf)
+                        plot_one_box(xyxy, img, label=label, color=self.colors[int(cls)])
+
+        if self.view_img:
             fig = plt.figure()
-            plt.imshow(img0)
+            plt.imshow(img)
             plt.show()
-        print('Done. (%.3fs)' % (time.time() - t))
+
+    def __repr__(self):
+        return f'Detector(device=({self.device}))'
 
 
 def detect(save_txt=False, save_img=False):
-    img_size = (320, 192) if ONNX_EXPORT else opt.img_size  # (320, 192) or (416, 256) or (608, 352) for (height, width)
     out, source, weights, half, view_img = opt.output, opt.source, opt.weights, opt.half, opt.view_img
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
@@ -82,7 +88,7 @@ def detect(save_txt=False, save_img=False):
     os.makedirs(out)  # make new output folder
 
     # Initialize model
-    model = Darknet(opt.cfg, img_size)
+    model = Darknet(opt.cfg, opt.img_size)
 
     # Load weights
     attempt_download(weights)
@@ -234,9 +240,17 @@ if __name__ == '__main__':
     opt.cfg = 'cfg/yolov3-tiny-frames.cfg'
     opt.data = '/home/francesco/Documents/Kanga-Challenge/source/dataset/yolo/frames.data'
     opt.weights = 'weights/best.pt'
-    classes = {0 : 'player', 1 : 'time', 2 : 'stocks', 3 : 'damage'}
+    classes = {0: 'player', 1: 'time', 2: 'stocks', 3: 'damage'}
     # datector = Detect(torch.device('cuda'), opt, classes=classes)
-    datector = Detect(torch.device('cpu'), opt, classes=classes)
+    datector = Detect(torch.device('cpu'),
+                      img_size=opt.img_size,
+                      source=opt.source,
+                      output=opt.output,
+                      weights=opt.weights,
+                      half=opt.half,
+                      view_img=opt.view_img,
+                      cfg=opt.cfg,
+                      classes=classes)
     img = cv2.imread('./data/samples/830.jpg')
     # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     with torch.no_grad():
