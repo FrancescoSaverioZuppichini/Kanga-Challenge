@@ -15,13 +15,17 @@ class VideoDataset(Dataset):
     this is just a long list of tensors in which we can apply a transformation. It also provide 
     two useful methods to decompose video form youtube and from a video file.
     """
-    def __init__(self, frames: list, transform=None):
+    def __init__(self, frames: list, transform=None, return_input=False):
         self.frames = frames
         self.transform = transform
+        self.return_input = return_input
 
     def __getitem__(self, idx):
         x = self.frames[idx]
-        if self.transform is not None: x = self.transform(x)
+        if self.transform is not None:
+            x = self.transform(x)
+        if self.return_input:
+            return x, self.frames[idx]
         return x
 
     def __len__(self):

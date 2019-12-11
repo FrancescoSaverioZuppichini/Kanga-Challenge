@@ -1,29 +1,68 @@
 import argparse
 import torch
 from sys import platform
+import numpy as np
+import matplotlib.pyplot as plt
 
 from .models import *  # set ONNX_EXPORT in models.py
 from .utils.datasets import *
 from .utils.utils import *
+from dataclasses import dataclass
+import logging
+from torchvision.transforms import Compose, Lambda, ToTensor
 
-import matplotlib.pyplot as plt
+
+@dataclass
+class Yolov3Transform:
+    """
+    Basic image processing for Yolov3.
+    """
+    half: bool = False
+    img_size: tuple = (416, 416)
+
+    def __post_init__(self):
+        self.img_size = (320, 192) if ONNX_EXPORT else self.img_size
+
+    def __call__(self, img: np.array) -> np.array:
+        """
+        Transform the input images to the correct tensor for yolov3.
+        :param img: A RGB image of (C, H, W) shape
+        :return: yolov3 input
+        """
+        # Padded resize
+        x = letterbox(img, new_shape=self.img_size)[0]
+        x = np.ascontiguousarray(x, dtype=np.float16 if self.half else np.float32)  # uint8 to fp16/fp32
+        x /= 255.0  # 0 - 255 to 0.0 - 1.0
+        return x
 
 
+@dataclass
 class Detect:
-    def __init__(self, device, cfg, weights, img_size=416, output=None, half=False, view_img=False,
-                 classes: dict = None):
-        self.device = device
-        self.cfg = cfg
-        self.weights = weights
-        self.img_size = (320, 192) if ONNX_EXPORT else img_size
+    cfg: str = 'cfg/yolov3.cfg'
+    weights: str = 'weights/best.pt'
+    img_size: tuple = (416, 416)
+    transform: callable = None
+    classes: dict = None
+    device: torch.device = torch.device('cpu')
+    output: str = None
+    half: bool = False
+    view_img: bool = False
+
+    def __post_init__(self):
         self.half = False
-        self.view_img = view_img
-        self.classes = classes
-        self.colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(classes))]
+        self.transform = self.transform or Compose([
+            Yolov3Transform(self.half, self.img_size),
+            ToTensor()])
+
+        self.colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(self.classes))]
 
         self.model = self.get_model()
 
     def get_model(self):
+        """
+        Return a Darknet model corretly initialized.
+        :return: Darknet
+        """
         model = Darknet(self.cfg, self.img_size)
         attempt_download(self.weights)
         if self.weights.endswith('.pt'):  # pytorch format
@@ -40,41 +79,51 @@ class Detect:
 
         return model
 
-    def __call__(self, img, conf_thres=0.3, nms_thres=0.5):
-        t = time.time()
-        # Padded resize
-        img_pad = letterbox(img)[0]
-        # Normalize RGB
-        img_pad = cv2.cvtColor(img_pad, cv2.COLOR_BGR2RGB)
-        img_pad = img_pad.transpose(2, 0, 1)
-        img_pad = np.ascontiguousarray(img_pad, dtype=np.float16 if self.half else np.float32)  # uint8 to fp16/fp32
-        img_pad /= 255.0  # 0 - 255 to 0.0 - 1.0
+    def __call__(self, imgs, conf_thres=0.3, nms_thres=0.5):
+        """
 
-        x = torch.from_numpy(img_pad).to(self.device)
-        if x.ndimension() == 3:
-            x = x.unsqueeze(0)
-        pred = self.model(x)[0]
-        if self.half:
-            pred = pred.float()
-        pred = non_max_suppression(pred, conf_thres, nms_thres)
-        # print(f'Pred done in {time.time() - t:.3f}s')
-        for i, det in enumerate(pred):  # detections per image
-            if det is not None and len(det):
-                det[:, :4] = scale_coords(x.shape[2:], det[:, :4], img.shape).round()
-                for *xyxy, conf, _, cls in det:
-                    # Rescale boxes from img_size to im0 size
-                    # print(f'class={self.classes[int(cls)]:<10} coords={xyxy}')
-                    if self.view_img:
-                        label = '%s %.2f' % (self.classes[int(cls)], conf)
-                        plot_one_box(xyxy, img, label=label, color=self.colors[int(cls)])
+        :param imgs: An array of RGB images as numpy arrays.
+        :param conf_thres:
+        :param nms_thres:
+        :return: A list of predictions correctly rescaled.
+        """
+        preds_imgs = []
+        for img in tqdm(imgs):
+            x = img.copy()
+            if self.transform is not None:
+                x = self.transform(x)
+            if x.ndimension() == 3:
+                x = x.unsqueeze(0)
+            preds = self.model(x)[0]
+            if self.half:
+                preds = preds.float()
+            preds = non_max_suppression(preds, conf_thres, nms_thres)
+            # rescale predictions
+            for i, pred in enumerate(preds):
+                pred[:, :4] = scale_coords(x.shape[2:], pred[:, :4], img.shape).round()
+                preds[i] = pred
+            preds_imgs.append(preds)
+        return preds_imgs
 
-        if self.view_img:
+    def plot_pred_on_img(self, img, preds):
+        """
+        Given and image and predictions obtained from calling the detector, plot the bounding boxes on the img
+        :param img:
+        :param preds:
+        :return:
+        """
+        for i, pred in enumerate(preds):
+            if pred is not None and len(pred):
+                for *xyxy, conf, _, cls in pred:
+                    print(f'class={self.classes[int(cls)]:<10} coords={xyxy}')
+                    label = '%s %.2f' % (self.classes[int(cls)], conf)
+                    plot_one_box(xyxy, img, label=label, color=self.colors[int(cls)])
+
             fig = plt.figure()
             plt.imshow(img)
             plt.show()
 
-    def __repr__(self):
-        return f'Detector(device=({self.device}))'
+        return fig
 
 
 def detect(save_txt=False, save_img=False):
@@ -112,7 +161,7 @@ def detect(save_txt=False, save_img=False):
 
     # Export mode
     if ONNX_EXPORT:
-        img = torch.zeros((1, 3) + img_size)  # (1, 3, 320, 192)
+        img = torch.zeros((1, 3) + opt.img_size)  # (1, 3, 320, 192)
         torch.onnx.export(model, img, 'weights/export.onnx', verbose=False, opset_version=11)
 
         # Validate exported model
@@ -132,10 +181,10 @@ def detect(save_txt=False, save_img=False):
     if webcam:
         view_img = True
         torch.backends.cudnn.benchmark = True  # set True to speed up constant image size inference
-        dataset = LoadStreams(source, img_size=img_size, half=half)
+        dataset = LoadStreams(source, img_size=opt.img_size, half=half)
     else:
         save_img = True
-        dataset = LoadImages(source, img_size=img_size, half=half)
+        dataset = LoadImages(source, img_size=opt.img_size, half=half)
 
     # Get classes and colors
     classes = load_classes(parse_data_cfg(opt.data)['names'])
