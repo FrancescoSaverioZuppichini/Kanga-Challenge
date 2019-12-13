@@ -6,6 +6,7 @@ from pathlib import Path
 from logger import logging
 import matplotlib.pyplot as plt
 import tqdm
+
 plt.ion()  # enables interactive mode
 
 
@@ -15,6 +16,7 @@ class VideoDataset(Dataset):
     this is just a long list of tensors in which we can apply a transformation. It also provide 
     two useful methods to decompose video form youtube and from a video file.
     """
+
     def __init__(self, frames: list, transform=None, return_input=False):
         self.frames = frames
         self.transform = transform
@@ -32,7 +34,7 @@ class VideoDataset(Dataset):
         return len(self.frames)
 
     @classmethod
-    def from_yt(csl, video_url: str, out_dir: Path, force: bool = False):
+    def from_yt(csl, video_url: str, out_dir: Path, force: bool = False, *args, **kwargs):
         """
         Uses `pytube` to download a video from youtube using `video_url` and stores in `out_dir`. 
         The output filepath is computed using the video title.
@@ -48,7 +50,7 @@ class VideoDataset(Dataset):
         :return: A new instance of VideoDataset
         :rtype: [VideoDataset]
         """
-        
+
         youtube = pytube.YouTube(video_url)
         video = youtube.streams.first()
         file_path = out_dir / (video.title + '.mp4')
@@ -59,10 +61,16 @@ class VideoDataset(Dataset):
             logging.info(f'Downloading video from {video_url}.')
             video.download(out_dir)
         logging.info(f'Saved at {file_path}.')
-        return csl.from_file(file_path, out_dir)
+        return csl.from_file(file_path, out_dir,  *args, **kwargs)
 
     @classmethod
-    def from_file(cls, video_path: Path, out_dir: Path):
+    def from_root(cls, root: Path, *args, **kwargs):
+        img_paths = root.glob('*.jpg')
+        frames = [cv2.imread(str(path)) for path in img_paths]
+        return cls(frames, *args, **kwargs)
+
+    @classmethod
+    def from_file(cls, video_path: Path, out_dir: Path, *args, **kwargs):
         """
         Open a video file and store each frame individually.
         
@@ -86,4 +94,4 @@ class VideoDataset(Dataset):
             bar.update()
             frames.append(frame)
             if not ret: break
-        return cls(frames)
+        return cls(frames, *args, **kwargs)

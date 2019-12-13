@@ -94,36 +94,32 @@ class Detect:
                 x = self.transform(x)
             if x.ndimension() == 3:
                 x = x.unsqueeze(0)
-            preds = self.model(x)[0]
-            if self.half:
-                preds = preds.float()
-            preds = non_max_suppression(preds, conf_thres, nms_thres)
-            # rescale predictions
-            for i, pred in enumerate(preds):
-                pred[:, :4] = scale_coords(x.shape[2:], pred[:, :4], img.shape).round()
-                preds[i] = pred
-            preds_imgs.append(preds)
+            with torch.no_grad():
+                preds = self.model(x)[0]
+                if self.half:
+                    preds = preds.float()
+                preds = non_max_suppression(preds, conf_thres, nms_thres)
+                #  rescale predictions
+                preds[:, :4] = scale_coords(x.shape[2:], preds[:, :4], img.shape).round()
+                preds_imgs.append(preds)
+
         return preds_imgs
 
-    def plot_pred_on_img(self, img, preds):
+    def add_bb_on_img(self, img, preds):
         """
         Given and image and predictions obtained from calling the detector, plot the bounding boxes on the img
         :param img:
         :param preds:
         :return:
         """
+
         for i, pred in enumerate(preds):
-            if pred is not None and len(pred):
-                for *xyxy, conf, _, cls in pred:
-                    print(f'class={self.classes[int(cls)]:<10} coords={xyxy}')
-                    label = '%s %.2f' % (self.classes[int(cls)], conf)
-                    plot_one_box(xyxy, img, label=label, color=self.colors[int(cls)])
+            *xyxy, conf, _, cls = pred
+            # print(f'class={self.classes[int(cls)]:<10} coords={xyxy}')
+            label = '%s %.2f' % (self.classes[int(cls)], conf)
+            plot_one_box(xyxy, img, label=label, color=self.colors[int(cls)])
 
-            fig = plt.figure()
-            plt.imshow(img)
-            plt.show()
-
-        return fig
+        return img
 
 
 def detect(save_txt=False, save_img=False):

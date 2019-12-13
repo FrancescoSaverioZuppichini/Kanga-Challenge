@@ -442,7 +442,8 @@ def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.5):
 
     min_wh = 2  # (pixels) minimum box width and height
 
-    output = [None] * len(prediction)
+    # output = [None] * len(prediction)
+    output = None
     for image_i, pred in enumerate(prediction):
         # Experiment: Prior class size rejection
         # x, y, w, h = pred[:, 0], pred[:, 1], pred[:, 2], pred[:, 3]
@@ -550,7 +551,12 @@ def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.5):
 
         if len(det_max):
             det_max = torch.cat(det_max)  # concatenate
-            output[image_i] = det_max[(-det_max[:, 4]).argsort()]  # sort
+            det_max_sort = det_max[(-det_max[:, 4]).argsort()]
+            if output is None:
+                output = det_max_sort
+            else:
+                output = torch.stack([output, det_max_sort])
+            # output[image_i] = det_max[(-det_max[:, 4]).argsort()]  # sort
 
     return output
 
@@ -776,6 +782,7 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=None):
         cv2.rectangle(img, c1, c2, color, -1)  # filled
         cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
     return img
+
 
 def plot_wh_methods():  # from utils.utils import *; plot_wh_methods()
     # Compares the two methods for width-height anchor multiplication
