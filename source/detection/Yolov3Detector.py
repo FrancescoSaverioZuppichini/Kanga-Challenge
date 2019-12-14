@@ -12,7 +12,7 @@ from yolov3.models import Darknet, load_darknet_weights, attempt_download, ONNX_
 from yolov3.utils.utils import non_max_suppression, scale_coords, plot_one_box
 
 @dataclass
-class Yolov3Detector:
+class Yolov3Detector(Detector):
     cfg: str = 'cfg/yolov3.cfg'
     weights: str = 'weights/best.pt'
     img_size: tuple = (416, 416)
@@ -54,7 +54,7 @@ class Yolov3Detector:
 
         return model
 
-    def __call__(self, imgs, conf_thres=0.3, nms_thres=0.5):
+    def detect(self, imgs, conf_thres=0.3, nms_thres=0.5):
         """
 
         :param imgs: An array of RGB images as numpy arrays.

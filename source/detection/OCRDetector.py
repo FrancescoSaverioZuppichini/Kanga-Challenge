@@ -1,0 +1,36 @@
+import pytesseract
+import cv2
+from detection import Detector
+from PIL import Image
+from dataclasses import dataclass
+from utils import imshow
+import numpy as np
+
+@dataclass
+class OCRDetector(Detector):
+    """
+    Easy peasy ocr with tesseract, to improve the prediction you can pass 
+    `text_color` to cutoff all values that are not text. 
+
+    TODO: probably there is a cv2 function in which we can define a color and a range.
+    """
+    text_color: int = 165 
+    smooth: bool = True # if True apply Gaussian Blur to remove noise
+    show_img: bool = False
+    transform: callable = None
+        
+    def detect(self, imgs):
+        texts = []
+        for img in imgs:
+            if self.smooth: 
+                img = cv2.GaussianBlur(img, (3,3), 0)
+            if self.text_color:
+                img = img > self.text_color
+            if self.transform is not None: img = self.transform(img)
+            img = img.astype('uint8')
+            if self.show_img : imshow(img)
+            x = Image.fromarray(img * 255)
+            text = pytesseract.image_to_string(x, lang='eng', config='--psm 11 --oem 3 -c tessedit_char_whitelist=0123456789')
+            texts.append(text)
+            
+        return texts

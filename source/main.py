@@ -3,7 +3,7 @@ import torch
 from data.VideoDataset import VideoDataset
 from pathlib import Path
 from data.transformation import Yolov3Transform
-from detection import Yolov3Detector
+from detection import Yolov3Detector, OCRDetector
 import cv2
 import time
 import numpy as np
@@ -45,12 +45,19 @@ class Yolov3Prediction:
 
         return pred_json
 
+def break_down_images_fom(detections):
+    for det in detections:
+        *coord, conf, _, cls = det
+        x1, y1, x2, y2 = coord
+        crop = img[y1.int() : y2.int(), x1.int():x2.int()]
+        yield crop, cls.int().item()
 
 detector = Yolov3Detector(weights='./yolov3/weights/best.pt',
                   cfg='./yolov3/cfg/yolov3-tiny-frames.cfg',
                   view_img=True,
                   classes=classes,
                   transform=transform)
+time_detector = OCRDetector(show_img=False)
 
 root = Project().data_dir / 'videos' / 'evo2014' / 'frames'
 
@@ -59,25 +66,31 @@ img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 preds = detector([img], conf_thres=0.5)
 yolov3_pred = Yolov3Prediction(preds[0])
 pprint.pprint(yolov3_pred)
-# fig = plt.figure()
-# plt.ion()
-#
-# cap = cv2.VideoCapture(
-#     str(Project().data_dir / 'videos' / 'evo2014' / 'Axe four stocks SilentWolf in less than a minute Evo 2014.mp4'))
-# im = None
-# i = 0
-#
-# while (cap.isOpened()):
-#     ret, frame = cap.read()
-#     i += 1
-#     if i > 60 * 3:
-#         if i % 2 == 0:
-#             if im is None: im = plt.imshow(frame)
-#             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-#             preds = detector([frame], conf_thres=0.5)
-#             img = detector.add_bb_on_img(frame, preds[0])
-#             im.set_array(img)
-#             plt.pause(0.001)
-#
-# plt.ioff()
-# plt.show()
+fig = plt.figure()
+plt.ion()
+
+cap = cv2.VideoCapture(
+    str(Project().data_dir / 'videos' / 'evo2014' / 'Axe four stocks SilentWolf in less than a minute Evo 2014.mp4'))
+im = None
+i = 0
+
+while (cap.isOpened()):
+    ret, frame = cap.read()
+    i += 1
+    if i > 60 * 3:
+        if i % 2 == 0:
+            if im is None: im = plt.imshow(frame)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            preds = detector([frame], conf_thres=0.5)
+            for crop, cls in break_down_images_fom(preds[0]):
+                if cls == 1 or cls == 3:
+                    crop = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+                    # crop = cv2.resize(crop, (crop.shape[1] * 2, crop.shape[0] * 2))
+                    pred = time_detector([crop])
+                    print(pred)
+            img = detector.add_bb_on_img(frame, preds[0])
+            im.set_array(img)
+            plt.pause(0.001)
+
+plt.ioff()
+plt.show()
