@@ -13,16 +13,17 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from dataclasses import dataclass
 import pprint
+import threading
+from multiprocessing import Queue
 
-classes = {0: 'player', 1: 'time', 2: 'stocks', 3: 'damage'}
-transform = Compose([
-    Yolov3Transform(),
-    ToTensor(),
-])
+from tqdm.autonotebook import tqdm
 
 
 @dataclass
 class Yolov3Prediction:
+    """
+    Representation of a YoloV3 prediction with superpowers.
+    """
     pred: torch.Tensor
 
     def __getitem__(self, i):
@@ -37,40 +38,63 @@ class Yolov3Prediction:
         for *xyxy, conf, _, cls in pred:
             x1, y1, x2, y2 = xyxy
             pred_json.append({
-                'coord': [x1.int(), y1.int(),
-                          x2.int(), y2.int()],
+                'coord': [x1, y1, x2, y2],
                 'confidence': conf,
                 'class': cls
             })
 
         return pred_json
 
-def break_down_images_fom(detections):
-    for det in detections:
-        *coord, conf, _, cls = det
-        x1, y1, x2, y2 = coord
-        crop = img[y1.int() : y2.int(), x1.int():x2.int()]
-        yield crop, cls.int().item()
+    def cropped_images(self, src):
+        """
+        Generator that returns the cropped region and the class for each detection
+        """
+        for det in self.pred:
+            *coord, conf, _, cls = det
+            x1, y1, x2, y2 = coord
+            crop = src[y1.int():y2.int(), x1.int():x2.int()]
+            yield crop, cls.int().item()
 
+
+classes = {0: 'player', 1: 'time', 2: 'stocks', 3: 'damage'}
+transform = Compose([
+    Yolov3Transform(),
+    ToTensor(),
+])
+# create our detectors
 detector = Yolov3Detector(weights='./yolov3/weights/best.pt',
-                  cfg='./yolov3/cfg/yolov3-tiny-frames.cfg',
-                  view_img=True,
-                  classes=classes,
-                  transform=transform)
-time_detector = OCRDetector(show_img=False)
+                          cfg='./yolov3/cfg/yolov3-tiny-frames.cfg',
+                          view_img=True,
+                          classes=classes,
+                          transform=transform)
+ocr_detector = OCRDetector(show_img=False)
 
-root = Project().data_dir / 'videos' / 'evo2014' / 'frames'
 
-img = cv2.imread('./yolov3/data/samples/830.jpg')
-img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-preds = detector([img], conf_thres=0.5)
-yolov3_pred = Yolov3Prediction(preds[0])
-pprint.pprint(yolov3_pred)
-fig = plt.figure()
-plt.ion()
+def smash_bros_detector(yolo_pred, my_queue):
+    pred_json = yolo_pred.to_JSON()
+    for pred, (crop, cls) in tqdm(zip(pred_json, yolo_pred.cropped_images(frame))):
+        if cls == 1 or cls == 3:
+            crop = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+            # crop = cv2.resize(crop, (crop.shape[1] * 2, crop.shape[0] * 2))
+            text = ocr_detector([crop])
+            pred['text'] = text
+        elif cls == 0:
+            pred['text'] = 'TODO'
+        elif cls == 2:
+            pred['text'] = 'TODO'
 
+    my_queue.put(pred_json)
+
+
+# create a multi thread queue
+my_queue = Queue()
+# x will hold our current thread
+x = None
+# get and open the video
 cap = cv2.VideoCapture(
-    str(Project().data_dir / 'videos' / 'evo2014' / 'Axe four stocks SilentWolf in less than a minute Evo 2014.mp4'))
+    str(Project().data_dir / 'videos' / 'evo2014' /
+        'Axe four stocks SilentWolf in less than a minute Evo 2014.mp4'))
+
 im = None
 i = 0
 
@@ -82,15 +106,20 @@ while (cap.isOpened()):
             if im is None: im = plt.imshow(frame)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             preds = detector([frame], conf_thres=0.5)
-            for crop, cls in break_down_images_fom(preds[0]):
-                if cls == 1 or cls == 3:
-                    crop = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-                    # crop = cv2.resize(crop, (crop.shape[1] * 2, crop.shape[0] * 2))
-                    pred = time_detector([crop])
-                    print(pred)
+            yolo_pred = Yolov3Prediction(preds[0])
+            # we want to add further info to our prediction
+            if x is None:
+                x = threading.Thread(target=smash_bros_detector,
+                                     args=(yolo_pred, my_queue))
+                x.start()
+            else:
+                if not x.isAlive():
+                    pprint.pprint(my_queue.get())
+                    x = threading.Thread(target=smash_bros_detector,
+                                         args=(yolo_pred, my_queue))
+                    x.start()
             img = detector.add_bb_on_img(frame, preds[0])
             im.set_array(img)
             plt.pause(0.001)
-
 plt.ioff()
 plt.show()

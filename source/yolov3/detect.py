@@ -4,7 +4,7 @@ from sys import platform
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .models import *  # set ONNX_EXPORT in models.py
+from models import *  # set ONNX_EXPORT in models.py
 from .utils.datasets import *
 from .utils.utils import *
 import logging

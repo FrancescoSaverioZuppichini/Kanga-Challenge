@@ -60,7 +60,7 @@ class Yolov3Transform:
 
     def __call__(self, img: np.array) -> np.array:
         """
-        Transform the input images to the correct tensor for yolov3.
+        Transform the input image to the correct tensor for yolov3.
         :param img: A RGB image of (C, H, W) shape
         :return: yolov3 input
         """
