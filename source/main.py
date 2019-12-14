@@ -2,7 +2,8 @@ from Project import Project
 import torch
 from data.VideoDataset import VideoDataset
 from pathlib import Path
-from yolov3.detect import Detect, Yolov3Transform
+from data.transformation import Yolov3Transform
+from detection import Yolov3Detector
 import cv2
 import time
 import numpy as np
@@ -36,7 +37,8 @@ class Yolov3Prediction:
         for *xyxy, conf, _, cls in pred:
             x1, y1, x2, y2 = xyxy
             pred_json.append({
-                'coord': [x1.int(), y1.int(), x2.int(), y2.int()],
+                'coord': [x1.int(), y1.int(),
+                          x2.int(), y2.int()],
                 'confidence': conf,
                 'class': cls
             })
@@ -44,12 +46,11 @@ class Yolov3Prediction:
         return pred_json
 
 
-detector = Detect(
-    weights='./yolov3/weights/best.pt',
-    cfg='./yolov3/cfg/yolov3-tiny-frames.cfg',
-    view_img=True,
-    classes=classes,
-    transform=transform)
+detector = Yolov3Detector(weights='./yolov3/weights/best.pt',
+                  cfg='./yolov3/cfg/yolov3-tiny-frames.cfg',
+                  view_img=True,
+                  classes=classes,
+                  transform=transform)
 
 root = Project().data_dir / 'videos' / 'evo2014' / 'frames'
 
