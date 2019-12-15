@@ -96,3 +96,40 @@ class Yolov3Detector(Detector):
             plot_one_box(xyxy, img, label=label, color=self.colors[int(cls)])
 
         return img
+
+
+@dataclass
+class Yolov3Prediction:
+    """
+    Representation of a YoloV3 prediction with superpowers.
+    """
+    pred: torch.Tensor
+
+    def __getitem__(self, i):
+        return self.pred[i]
+
+    def to_JSON(self):
+        """
+        Convert prediction from the model to JSON format.
+        """
+        pred = self.pred.tolist()
+        pred_json = []
+        for *xyxy, conf, _, cls in pred:
+            x1, y1, x2, y2 = xyxy
+            pred_json.append({
+                'coord': [x1, y1, x2, y2],
+                'confidence': conf,
+                'class': cls
+            })
+
+        return pred_json
+
+    def cropped_images(self, src):
+        """
+        Generator that returns the cropped region and the class for each detection
+        """
+        for det in self.pred:
+            *coord, conf, _, cls = det
+            x1, y1, x2, y2 = coord
+            crop = src[y1.int():y2.int(), x1.int():x2.int()]
+            yield crop, cls.int().item()

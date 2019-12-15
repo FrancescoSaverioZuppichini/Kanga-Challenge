@@ -3,7 +3,8 @@ import torch
 from data.VideoDataset import VideoDataset
 from pathlib import Path
 from data.transformation import Yolov3Transform
-from detection import Yolov3Detector, OCRDetector
+from detection import Yolov3Detector, OCRDetector, Detector
+from detection.Yolov3Detector import Yolov3Prediction
 import cv2
 import time
 import numpy as np
@@ -14,115 +15,116 @@ from matplotlib.animation import FuncAnimation
 from dataclasses import dataclass
 import pprint
 import threading
+import re
 from multiprocessing import Queue
 
 from tqdm.autonotebook import tqdm
 # TODO
-# - [ ] try ocr with the new bb 
+# - [ ] try ocr with the new bb
 # - [ ] if now we prediction, use the old one for class 1 and 3
-
-@dataclass
-class Yolov3Prediction:
-    """
-    Representation of a YoloV3 prediction with superpowers.
-    """
-    pred: torch.Tensor
-
-    def __getitem__(self, i):
-        return self.pred[i]
-
-    def to_JSON(self):
-        """
-        Convert prediction from the model to JSON format.
-        """
-        pred = self.pred.tolist()
-        pred_json = []
-        for *xyxy, conf, _, cls in pred:
-            x1, y1, x2, y2 = xyxy
-            pred_json.append({
-                'coord': [x1, y1, x2, y2],
-                'confidence': conf,
-                'class': cls
-            })
-
-        return pred_json
-
-    def cropped_images(self, src):
-        """
-        Generator that returns the cropped region and the class for each detection
-        """
-        for det in self.pred:
-            *coord, conf, _, cls = det
-            x1, y1, x2, y2 = coord
-            crop = src[y1.int():y2.int(), x1.int():x2.int()]
-            yield crop, cls.int().item()
-
 
 classes = {0: 'player', 1: 'time', 2: 'stocks', 3: 'damage'}
 transform = Compose([
     Yolov3Transform(),
     ToTensor(),
 ])
-# create our detectors
-detector = Yolov3Detector(weights='./yolov3/weights/best.pt',
-                          cfg='./yolov3/cfg/yolov3-tiny-frames.cfg',
-                          view_img=True,
-                          classes=classes,
-                          transform=transform)
-ocr_detector = OCRDetector(show_img=False)
 
 
-def smash_bros_detector(yolo_pred, my_queue):
-    pred_json = yolo_pred.to_JSON()
-    for pred, (crop, cls) in tqdm(zip(pred_json, yolo_pred.cropped_images(frame))):
-        if cls == 1 or cls == 3:
-            crop = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-            # crop = cv2.resize(crop, (crop.shape[1] * 2, crop.shape[0] * 2))
-            text = ocr_detector([crop])
-            pred['text'] = text
-        elif cls == 0:
-            pred['text'] = 'TODO'
-        elif cls == 2:
-            pred['text'] = 'TODO'
+@dataclass
+class SmashBrosDetector(Detector):
+    yolov3_detector: Yolov3Detector = Yolov3Detector(
+        weights='./yolov3/weights/best.pt',
+        cfg='./yolov3/cfg/yolov3-tiny-frames.cfg',
+        view_img=True,
+        classes=classes,
+        transform=transform)
+    ocr_detector: OCRDetector = OCRDetector(
+        show_img=False,
+        text_color=None,
+        config='--psm 13 --oem 1 -c tessedit_char_whitelist=0123456789')
 
-    my_queue.put(pred_json)
+    def detect(self, imgs, *args, **kwargs):
+        frame = imgs[-1]
+        preds = self.yolov3_detector([frame], *args, **kwargs)
+        if len(preds) > 0:
+            preds = Yolov3Prediction(preds[0])
+            preds = self.add_gui(preds, frame)
+        return pred
+
+    def add_gui(self, yolo_pred, frame):
+        pred_json = yolo_pred.to_JSON()
+        for pred, (crop,
+                   cls) in tqdm(zip(pred_json,
+                                    yolo_pred.cropped_images(frame))):
+            if cls == 1 or cls == 3:
+                text = self.ocr_detector([crop])[0]
+                # replace 'o's with zeros
+                text = text.replace('O', '0')
+                text = text.replace('o', '0')
+                text = re.findall(r'\d+', text)
+                pred['text'] = text
+            # elif cls == 0:
+            #     pred['text'] = 'TODO'
+            # elif cls == 2:
+            #     pred['text'] = 'TODO'
+        # pprint.pprint(pred_json)
+        return pred_json
 
 
-# create a multi thread queue
-my_queue = Queue()
-# x will hold our current thread
-x = None
+@dataclass
+class RealTimeSmashBrosDetector(SmashBrosDetector):
+    queue: Queue = Queue()
+    skip_frames: int = 2
+    frame_transform: callable = None
+    _th: threading.Thread = None
+    show: bool = False
+
+    def detect(self, stream, *args, **kwargs):
+        im = None
+        for i, frame in enumerate(stream):
+            if self.show and im is None: im = plt.imshow(frame)
+            if self.frame_transform is not None:
+                frame = self.frame_transform(frame)
+            if i % self.skip_frames == 0:
+                preds = self.yolov3_detector([frame], *args, **kwargs)
+                if len(preds) > 0:
+                    preds = Yolov3Prediction(preds[0])
+                    th = self.get_th(preds, frame)
+                    if not th.isAlive(): 
+                        th.start()
+                    if self.show:
+                        img = self.yolov3_detector.add_bb_on_img(frame, preds)
+                        im.set_array(img)
+            plt.pause(0.001)
+
+    def add_gui(self, *args, **kwargs):
+        res = super().add_gui(*args, **kwargs)
+        pprint.pprint(res)
+        # little trick, fetch the superclass output and store it into our multi preocess queue
+        # self.queue.put(res)
+
+    def get_th(self, *args):
+        if self._th is None or not self._th.isAlive():
+            self._th = threading.Thread(target=self.add_gui, args=(args))
+
+        return self._th
+
+
 # get and open the video
 cap = cv2.VideoCapture(
     str(Project().data_dir / 'videos' / 'evo2014' /
         'Axe four stocks SilentWolf in less than a minute Evo 2014.mp4'))
+detector = RealTimeSmashBrosDetector(
+    show=True, frame_transform=lambda x: cv2.cvtColor(x, cv2.COLOR_BGR2RGB))
 
-im = None
-i = 0
 
-while (cap.isOpened()):
-    ret, frame = cap.read()
-    i += 1
-    if i > 60 * 3:
-        if i % 2 == 0:
-            if im is None: im = plt.imshow(frame)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            preds = detector([frame], conf_thres=0.3)
-            if len(preds) > 0:
-                yolo_pred = Yolov3Prediction(preds[0])
-                # we want to add further info to our prediction
-                if x is None:
-                    x = threading.Thread(target=smash_bros_detector,
-                                        args=(yolo_pred, my_queue))
-                    x.start()
-                else:
-                    if not x.isAlive():
-                        pprint.pprint(my_queue.get())
-                        x = threading.Thread(target=smash_bros_detector,
-                                            args=(yolo_pred, my_queue))
-                        x.start()
-                img = detector.add_bb_on_img(frame, preds[0])
-                im.set_array(img)
-            plt.pause(0.001)
+def capread(cap):
+    while (cap.isOpened()):
+        ret, frame = cap.read()
+        yield frame
+fig = plt.figure()
+plt.ion()
+detector(capread(cap))
+
 plt.ioff()
 plt.show()
