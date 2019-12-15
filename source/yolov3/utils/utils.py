@@ -432,7 +432,7 @@ def build_targets(model, targets):
     return tcls, tbox, indices, av
 
 
-def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.5):
+def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.5, return_tensor=False):
     """
     Removes detections with lower object confidence score than 'conf_thres'
     Non-Maximum Suppression to further filter detections.
@@ -442,8 +442,8 @@ def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.5):
 
     min_wh = 2  # (pixels) minimum box width and height
 
-    # output = [None] * len(prediction)
-    output = None
+    output = [None] * len(prediction)
+    if return_tensor: output = None
     for image_i, pred in enumerate(prediction):
         # Experiment: Prior class size rejection
         # x, y, w, h = pred[:, 0], pred[:, 1], pred[:, 2], pred[:, 3]
@@ -552,11 +552,13 @@ def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.5):
         if len(det_max):
             det_max = torch.cat(det_max)  # concatenate
             det_max_sort = det_max[(-det_max[:, 4]).argsort()]
-            if output is None:
-                output = det_max_sort
+            if return_tensor:
+                if output is None:
+                    output = det_max_sort
+                else:
+                    output = torch.stack([output, det_max_sort])
             else:
-                output = torch.stack([output, det_max_sort])
-            # output[image_i] = det_max[(-det_max[:, 4]).argsort()]  # sort
+                output[image_i] = det_max[(-det_max[:, 4]).argsort()]  # sort
 
     return output
 

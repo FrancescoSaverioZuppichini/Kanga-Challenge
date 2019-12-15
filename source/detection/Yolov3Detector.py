@@ -73,10 +73,11 @@ class Yolov3Detector(Detector):
                 preds = self.model(x)[0]
                 if self.half:
                     preds = preds.float()
-                preds = non_max_suppression(preds, conf_thres, nms_thres)
-                #  rescale predictions
-                preds[:, :4] = scale_coords(x.shape[2:], preds[:, :4], img.shape).round()
-                preds_imgs.append(preds)
+                preds = non_max_suppression(preds, conf_thres, nms_thres, return_tensor=True)
+                if preds is not None:
+                    #  rescale predictions
+                    preds[:, :4] = scale_coords(x.shape[2:], preds[:, :4], img.shape).round()
+                    preds_imgs.append(preds)
 
         return preds_imgs
 

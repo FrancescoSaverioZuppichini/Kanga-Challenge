@@ -17,7 +17,9 @@ import threading
 from multiprocessing import Queue
 
 from tqdm.autonotebook import tqdm
-
+# TODO
+# - [ ] try ocr with the new bb 
+# - [ ] if now we prediction, use the old one for class 1 and 3
 
 @dataclass
 class Yolov3Prediction:
@@ -105,21 +107,22 @@ while (cap.isOpened()):
         if i % 2 == 0:
             if im is None: im = plt.imshow(frame)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            preds = detector([frame], conf_thres=0.5)
-            yolo_pred = Yolov3Prediction(preds[0])
-            # we want to add further info to our prediction
-            if x is None:
-                x = threading.Thread(target=smash_bros_detector,
-                                     args=(yolo_pred, my_queue))
-                x.start()
-            else:
-                if not x.isAlive():
-                    pprint.pprint(my_queue.get())
+            preds = detector([frame], conf_thres=0.3)
+            if len(preds) > 0:
+                yolo_pred = Yolov3Prediction(preds[0])
+                # we want to add further info to our prediction
+                if x is None:
                     x = threading.Thread(target=smash_bros_detector,
-                                         args=(yolo_pred, my_queue))
+                                        args=(yolo_pred, my_queue))
                     x.start()
-            img = detector.add_bb_on_img(frame, preds[0])
-            im.set_array(img)
+                else:
+                    if not x.isAlive():
+                        pprint.pprint(my_queue.get())
+                        x = threading.Thread(target=smash_bros_detector,
+                                            args=(yolo_pred, my_queue))
+                        x.start()
+                img = detector.add_bb_on_img(frame, preds[0])
+                im.set_array(img)
             plt.pause(0.001)
 plt.ioff()
 plt.show()
