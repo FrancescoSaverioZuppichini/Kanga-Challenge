@@ -93,12 +93,13 @@ class EASTTextDetector(Detector):
         nmsThreshold = 0.3
         indices = cv2.dnn.NMSBoxesRotated(detections, confidences,
                                           confThreshold, nmsThreshold)
-        return boxes[indices].squeeze()
+        boxes = boxes[indices].squeeze(0)
+        return boxes
 
     def plot_boxes(self, img):
         fig, ax = plt.subplots(1)
         plt.imshow(img)
-
+        print(self.boxes)
         for box in self.boxes:
             x1, y1, x2, y2 = box
             rect = patches.Rectangle((x1, y1),
