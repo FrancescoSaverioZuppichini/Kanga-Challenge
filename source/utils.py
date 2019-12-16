@@ -59,3 +59,17 @@ def extract_only_numbers(text):
     text = text.replace('o', '0')
     text = re.findall(r'\d+', text)
     return ''.join(text)
+
+def crops_from_yolov3_preds(preds, src):
+        for det in preds:
+            *coord, conf, _, cls = det
+            coord = np.array(coord).astype(np.int)
+            #             crop out from src image
+            x1, y1, x2, y2 = coord
+            crop = src[y1:y2, x1:x2]
+            yield crop
+
+def crops_from_df_preds(preds, src):
+        for i, det in preds.iterrows():
+            crop = src[int(det.y):int(det.y2), int(det.x):int(det.x2)]
+            yield crop
