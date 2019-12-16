@@ -24,31 +24,19 @@ from tqdm.autonotebook import tqdm
 # - [ ] if now we prediction, use the old one for class 1 and 3
 from scipy.spatial.distance import cdist
 
-class StooqDetector(Detector):
+
+class StockDetector(Detector):
+    """
+    Since each stooq is a square, we are going to compare the ratio of the rectangle
+    """
     cls: int = 2
-    area_tr = .3
-    
-    def detect(self, img, preds, history):
-        preds, prev = history[-1], history[-2]
-        preds = preds[preds['cls'] == 2].reset_index(drop=True)
-        prev = prev[prev['cls'] == 2].reset_index(drop=True)
-        current = self.add_area(current)
-        prev = self.add_area(prev)
-        #  Get distance matrix
-        Y = cdist(current[['x', 'y', 'x2', 'y2']], prev[['x', 'y', 'x2', 'y2']])
-        for i, det in preds.iterrows():
-            closed_det_prev = prev.iloc[np.argmin(Y[i])]
-            imshow(det.crop)
-            imshow(closed_det_prev.crop)
-            if abs(np.abs(det.area - closed_det_prev.area)/ det.area) > self.area_tr:
-                print('stock changed')
-                
-    def add_area(self, df):
-        def _inner(x):
-            return x.crop.shape[0] * x.crop.shape[1]
-        
-        df['area'] = df.apply(_inner, axis=1)
-        return df
+
+    def detect(self, img, det, history=None):
+        # TODO  we can avoid false positve by using the history
+        # to check if the value was increased or decreased before
+        return np.round(img.shape[1] / img.shape[0])
+
+
 classes = {0: 'player', 1: 'time', 2: 'stocks', 3: 'damage'}
 
 transform = Compose([
@@ -69,6 +57,7 @@ class RealTimeSmashBrosDetector(Detector):
         show_img=False,
         text_color=None,
         config='--psm 13 --oem 1 -c tessedit_char_whitelist=0123456789')
+    stock_detector: StockDetector = StockDetector()
     frame_transform: callable = None
     show: bool = False
     skip_frames: int = 2
@@ -77,31 +66,42 @@ class RealTimeSmashBrosDetector(Detector):
     def detect(self, stream, *args, **kwargs):
         im = None
         for i, frame in enumerate(stream):
-            if i > 200:
+            if i > 800:
                 if self.show and im is None: im = plt.imshow(frame)
                 if self.frame_transform is not None:
                     frame = self.frame_transform(frame)
                 if i % self.skip_frames == 0:
-                    preds = self.yolov3_detector([frame], *args, **kwargs)
+                    preds = self.yolov3_detector(frame, *args, **kwargs)
                     if len(preds) > 0:
-                        preds = preds[0]
                         if self.show:
-                            img = self.yolov3_detector.add_bb_on_img(frame, preds)
+                            img = self.yolov3_detector.add_bb_on_img(
+                                frame, preds)
                             im.set_array(img)
                         # convert pred to a pandas DataFrame
-                        preds = pd.DataFrame(
-                            preds.numpy(),
-                            columns=['x', 'y', 'x2', 'y2', 'conf', 'foo', 'cls'])
-                        preds['crop'] = list(crops_from_df_preds(preds, frame))
+                        preds = pd.DataFrame(preds.numpy(),
+                                             columns=[
+                                                 'x', 'y', 'x2', 'y2', 'conf',
+                                                 'foo', 'cls'
+                                             ])
+                        # get out each crop
+                        crops = list(crops_from_df_preds(preds, frame))
+                        # value column will hold additional information
+                        preds['value'] = None
+                        # for each detection, extract more information
+                        for crop, (i, det) in zip(crops, preds.iterrows()):
+                            if det.cls == 0:
+                                # TODO find out which player is
+                                pass
+                            elif det.cls == 2:
+                                stocks = self.stock_detector(
+                                    crop, det, self.history)
+                                preds.loc[i, 'value'] = stocks
+                            elif det.cls == 1 or det.cls == 3:
+                                text = extract_only_numbers(
+                                    self.ocr_detector(crop))
+                                preds.loc[i, 'value'] = text
 
-                        self.history.append(preds)
-
-                        # preds = ObjectDetection.from_yolov3(preds, src=frame)
-                        # preds = ThreadScheduler(DetectionPerClass(
-                        #     detectors={
-                        #         3: lambda x: extract_only_numbers(self.ocr_detector(x)),
-                        #         1: lambda x: extract_only_numbers(self.ocr_detector(x))
-                        #     }))(preds)
+                        print(preds)
 
                 plt.pause(0.001)
 

@@ -54,7 +54,7 @@ class Yolov3Detector(Detector):
 
         return model
 
-    def detect(self, imgs, conf_thres=0.3, nms_thres=0.5):
+    def detect(self, img, conf_thres=0.3, nms_thres=0.5):
         """
 
         :param imgs: An array of RGB images as numpy arrays.
@@ -62,24 +62,22 @@ class Yolov3Detector(Detector):
         :param nms_thres:
         :return: A list of predictions correctly rescaled.
         """
-        preds_imgs = []
-        for img in tqdm(imgs):
-            x = img.copy()
-            if self.transform is not None:
-                x = self.transform(x)
-            if x.ndimension() == 3:
-                x = x.unsqueeze(0)
-            with torch.no_grad():
-                preds = self.model(x)[0]
-                if self.half:
-                    preds = preds.float()
-                preds = non_max_suppression(preds, conf_thres, nms_thres, return_tensor=True)
-                if preds is not None:
-                    #  rescale predictions
-                    preds[:, :4] = scale_coords(x.shape[2:], preds[:, :4], img.shape).round()
-                    preds_imgs.append(preds)
+        # for img in imgs:
+        x = img.copy()
+        if self.transform is not None:
+            x = self.transform(x)
+        if x.ndimension() == 3:
+            x = x.unsqueeze(0)
+        with torch.no_grad():
+            preds = self.model(x)[0]
+            if self.half:
+                preds = preds.float()
+            preds = non_max_suppression(preds, conf_thres, nms_thres, return_tensor=True)
+            if preds is not None:
+                #  rescale predictions
+                preds[:, :4] = scale_coords(x.shape[2:], preds[:, :4], img.shape).round()
 
-        return preds_imgs
+        return preds
 
     def add_bb_on_img(self, img, preds):
         """
