@@ -83,23 +83,25 @@ class RealTimeSmashBrosDetector(Detector):
                                                  'x', 'y', 'x2', 'y2', 'conf',
                                                  'foo', 'cls'
                                              ])
+
+                        preds = preds.sort_values(by=['cls'])
                         # get out each crop
                         crops = list(crops_from_df_preds(preds, frame))
                         # value column will hold additional information
                         preds['value'] = None
                         # for each detection, extract more information
-                        for crop, (i, det) in zip(crops, preds.iterrows()):
-                            if det.cls == 0:
-                                # TODO find out which player is
-                                pass
-                            elif det.cls == 2:
-                                stocks = self.stock_detector(
-                                    crop, det, self.history)
-                                preds.loc[i, 'value'] = stocks
-                            elif det.cls == 1 or det.cls == 3:
-                                text = extract_only_numbers(
-                                    self.ocr_detector(crop))
-                                preds.loc[i, 'value'] = text
+                        # for crop, (i, det) in zip(crops, preds.iterrows()):
+                        #     if det.cls == 0:
+                        #         # TODO find out which player is
+                        #         pass
+                        #     elif det.cls == 2:
+                        #         stocks = self.stock_detector(
+                        #             crop, det, self.history)
+                        #         preds.loc[i, 'value'] = stocks
+                        #     elif det.cls == 1 or det.cls == 3:
+                        #         text = extract_only_numbers(
+                        #             self.ocr_detector(crop))
+                        #         preds.loc[i, 'value'] = text
 
                         print(preds)
 

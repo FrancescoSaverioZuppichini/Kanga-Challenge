@@ -27,7 +27,7 @@ hyp = {'giou': 3.31,  # giou loss gain
        'obj': 64.0,  # obj loss gain (*=img_size/320 if img_size != 320)
        'obj_pw': 1.0,  # obj BCELoss positive_weight
        'iou_t': 0.213,  # iou training threshold
-       'lr0': 0.00261,  # initial learning rate (SGD=1E-3, Adam=9E-5)
+       'lr0': 0.005,  # initial learning rate (SGD=1E-3, Adam=9E-5)
        'lrf': -4.,  # final LambdaLR learning rate = lr0 * (10 ** lrf)
        'momentum': 0.949,  # SGD momentum
        'weight_decay': 0.000489,  # optimizer weight decay
@@ -157,7 +157,7 @@ def train():
     # lf = lambda x: 1 - 10 ** (hyp['lrf'] * (1 - x / epochs))  # inverse exp ramp
     # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
     # scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=range(59, 70, 1), gamma=0.8)  # gradual fall to 0.1*lr0
-    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[round(opt.epochs * x) for x in [0.8, 0.9]], gamma=0.1)
+    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[round(opt.epochs * x) for x in [0.7,0.8, 0.9]], gamma=0.1)
     scheduler.last_epoch = start_epoch - 1
 
     # # Plot lr schedule
