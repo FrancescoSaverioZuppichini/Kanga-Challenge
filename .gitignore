@@ -2,6 +2,7 @@
 .vscode
 .pb
 .weights
+doc/images/sample
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
