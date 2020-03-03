@@ -1,11 +1,15 @@
+.idea
+.vscode
+.pb
+.weights
+doc/images/sample
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
 # C extensions
 *.so
-
+source/dataset
 # Distribution / packaging
 .Python
 build/
@@ -102,3 +106,7 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+source/dataset/videos/evo2014/frames/
+
+source/dataset/videos/evo2014/
